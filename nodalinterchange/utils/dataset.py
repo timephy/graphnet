@@ -76,6 +76,8 @@ class Dataset(TorchSet):
             pass
         self.truth_labels = truth_labels
         logging.info("Dataset setup finished")
+        self._index_memmaps = [open_memmap(os.path.join(f, self._pulse_frame, 'index.npy')) for f in self.files]
+        self._data_memmaps = [open_memmap(os.path.join(f, 'processed', 'data.npy')) for f in self.files]
 
     def _load_inputs(self, save_energies=False, force_recalculate=False):
         """
@@ -237,27 +239,24 @@ class Dataset(TorchSet):
             return len(self.filter)
         return len(self.non_empty_mask)
 
-    def get_as_numpy(self, idx):
+    def get_decoded_index(self, idx):
+        """"
+        Splits up provided index into input folder index and event index in folder.
+        """
         i = self.non_empty_mask[self.filter[idx]]
         indir_idx, increment = self._range_dict[i]
-        index = open_memmap(os.path.join(self.files[indir_idx], self._pulse_frame, 'index.npy'))
-        data = open_memmap(os.path.join(self.files[indir_idx], 'processed', 'data.npy'))
-        start, stop = index[i]
-        # truth = self._truths.iloc[i][self.truth_labels]
-        d = Data(x=torch.tensor(data[start:stop], dtype=torch.float),
-                 y=torch.tensor(truth, dtype=torch.float))
-        d.x = torch.div(torch.sub(d.x, self._means), self._stds) # normalize
-        d = (data[start:stop] - self._means) / self._stds
-        return d
+        return indir_idx, i-increment
+
+    def get_as_numpy(self, idx):
+        indir_idx, i = self.get_decoded_index(idx)
+        start, stop = self._index_memmaps[indir_idx][i]
+        return self._data_memmaps[indir_idx][start:stop]
 
     def get(self, idx):
-        i = self.non_empty_mask[self.filter[idx]]
-        indir_idx, increment = self._range_dict[i]
-        index = open_memmap(os.path.join(self.files[indir_idx], self._pulse_frame, 'index.npy'))
-        data = open_memmap(os.path.join(self.files[indir_idx], 'processed', 'data.npy'))
-        start, stop = index[i]
+        event = self.get_as_numpy(idx)
+        indir_idx, i = self.get_decoded_index(idx)
         truth = self._truths.iloc[i][self.truth_labels]
-        d = Data(x=torch.tensor(data[start:stop], dtype=torch.float),
+        d = Data(x=torch.tensor(event, dtype=torch.float),
                  y=torch.tensor(truth, dtype=torch.float))
         d.x = torch.div(torch.sub(d.x, self._means), self._stds) # normalize
         return d
