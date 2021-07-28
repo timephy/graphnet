@@ -209,9 +209,9 @@ class Dataset(TorchSet):
             indices.append(np.where(index['start'] != index['stop'])[0])
             n_events.append(len(index))
         mask = np.array(indices[0])
-        if len(indices) > 0:
+        if len(indices) > 1:
             for i, idx in enumerate(indices[1:]):
-                np.append(mask, idx + n_events[i+1])
+                mask = np.append(mask, idx + n_events[i+1])
         return mask
 
     def set_normalization_parameters(self, norm_pars):
