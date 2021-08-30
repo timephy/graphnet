@@ -63,7 +63,6 @@ class Dataset(TorchSet):
         self._range_dict = RangeDict()
         for i, (start, stop) in enumerate(self._event_index):
             self._range_dict[start:stop] = i
-        self._truths.reset_index(drop=True, inplace=True)
         self.write_data(overwrite_data)
         self.non_empty_mask = self._get_non_empty_events()
         self.filter = np.arange(len(self.non_empty_mask))
@@ -78,6 +77,7 @@ class Dataset(TorchSet):
         logging.info("Dataset setup finished")
         self._index_memmaps = [open_memmap(os.path.join(f, self._pulse_frame, 'index.npy')) for f in self.files]
         self._data_memmaps = [open_memmap(os.path.join(f, 'processed', 'data.npy')) for f in self.files]
+        self._raw_memmaps = [open_memmap(os.path.join(f, self._pulse_frame, 'data.npy')) for f in self.files]
 
     def _load_inputs(self, save_energies=False, force_recalculate=False):
         """
@@ -99,17 +99,8 @@ class Dataset(TorchSet):
                                  save_energies=save_energies,
                                  force_recalculate=force_recalculate)
                       for indir in self.files]
-            # Increment event indices
-            last_event_idx = np.array([
-                np.max(np.unique(frame['event'].values))
-                for frame in truths
-            ])
-            self._file_stops = last_event_idx
-            increments = np.cumsum(np.concatenate([[0], (np.array(last_event_idx[:-1])+1)]))
-            for truth_frame, inc in zip(truths, increments):
-                truth_frame['event'] += inc
             lengths = [len(t) for t in truths]
-            truths_all = pd.concat(truths)
+            truths_all = np.concatenate(truths)
             return truths_all, lengths
 
     def _get_input_information(self, pulse_frame):
@@ -149,10 +140,17 @@ class Dataset(TorchSet):
                 gcd = pickle.load(open(gcd_path, 'rb'), encoding='latin1')
 
             if overwrite_data:
+                logging.info("Overwrite previous pulse information")
                 try:
                     os.remove(os.path.join(processed_dir, 'data.npy'))
                 except FileNotFoundError:
                     pass
+            elif os.path.isfile(os.path.join(processed_dir, 'data.npy')):
+                logging.info('Previously processed input pulses found, skip processing')
+                continue
+
+            if self.upgrade:
+                logging.info("Processing pulses, this might take a while")
 
             n_features = 5 if not self.upgrade else 12
             data_converted = open_memmap(os.path.join(processed_dir, 'data.npy'),
@@ -179,14 +177,15 @@ class Dataset(TorchSet):
         pass
 
     def add_truth(self, df, overwrite=False):
-        intersect = np.intersect1d(df.columns, self._truths.columns)
-        df.reset_index(drop=True, inplace=True)
+        intersect = np.intersect1d(df.dtype.names, self._truths.dtype.names)
         if len(intersect) != 0 and not overwrite:
             raise IndexError('Names already exist:', intersect, '; Choose different column names')
         elif overwrite:
             for col in intersect:
-                del self._truths[col]
-        self._truths = pd.concat([self._truths, df], axis=1)
+                def rmfield( a, *fieldnames_to_remove ):
+                    return a[ [ name for name in a.dtype.names if name not in fieldnames_to_remove ] ]
+                self._truths = rmfield(self._truths, intersect)
+        self._truths = np.lib.recfunctions.merge_arrays([self._truths, df], flatten=True)
 
     def _read_normalization_parameters(self):
         n_events = 0
@@ -248,6 +247,11 @@ class Dataset(TorchSet):
         indir_idx, increment = self._range_dict[i]
         return indir_idx, i-increment
 
+    def get_raw(self, idx):
+        indir_idx, i = self.get_decoded_index(idx)
+        start, stop = self._index_memmaps[indir_idx][i]
+        return self._raw_memmaps[indir_idx][start:stop]
+
     def get_as_numpy(self, idx):
         indir_idx, i = self.get_decoded_index(idx)
         start, stop = self._index_memmaps[indir_idx][i]
@@ -256,15 +260,16 @@ class Dataset(TorchSet):
     def get(self, idx):
         event = self.get_as_numpy(idx)
         indir_idx, i = self.get_decoded_index(idx)
-        truth = self._truths.iloc[i][self.truth_labels]
+        truth = self._truths[self.truth_labels][i]
         d = Data(x=torch.tensor(event, dtype=torch.float),
-                 y=torch.tensor(truth, dtype=torch.float))
+                 y=torch.tensor(truth, dtype=torch.float),
+                 )
         d.x = torch.div(torch.sub(d.x, self._means), self._stds) # normalize
         return d
 
     def get_truths(self):
         idx = self.non_empty_mask[self.filter]
-        return self._truths.iloc[idx]
+        return self._truths[idx]
 
     def set_truth_labels(self, labels):
         self.truth_labels = labels
