@@ -52,13 +52,17 @@ class Dataset(TorchSet):
                  recalculate_energies=False,
                  overwrite_data=True,
                  normalization_parameters=None,
-                 make_data_list=True):
+                 pulse_frame=None,
+                 ):
         super().__init__()
         self.files = indir_list
         self.upgrade = upgrade
         logging.info('Loading inputs')
-        self._pulse_frame = "SRTTWOfflinePulsesDC" if not self.upgrade else "SplitInIcePulsesSRT"
         self._truths, self._file_lengths = self._load_inputs(save_energies, recalculate_energies)
+        if pulse_frame:
+            self._pulse_frame = pulse_frame
+        else:
+            self._pulse_frame = "SRTTWOfflinePulsesDC" if not self.upgrade else "SplitInIcePulsesSRT"
         self._pulse_index, self._event_index = self._get_input_information(self._pulse_frame)
         self._range_dict = RangeDict()
         for i, (start, stop) in enumerate(self._event_index):
