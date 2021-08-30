@@ -47,7 +47,7 @@ class Dataset(TorchSet):
                  indir_list,
                  upgrade=False,
                  # feature_labels=None,
-                 truth_labels=['x', 'y', 'z', 'x_dir', 'y_dir', 'z_dir', 'log10(energy)', 'log10(shower_energy)', 'log10(track_energy)', 'PID'],
+                 truth_labels=['x', 'y', 'z', 'x_dir', 'y_dir', 'z_dir', 'log10(neutrino_energy)', 'log10(shower_energy)', 'log10(track_energy)', 'PID'],
                  save_energies=False,
                  recalculate_energies=False,
                  overwrite_data=True,
