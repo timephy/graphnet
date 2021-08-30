@@ -31,8 +31,8 @@ class Dataset(TorchSet):
         List of truth frame names to put into data objects
     save_energies: bool
         Save calculated energies to input directory
-    force_recalculate: bool
-        Recalculate energies
+    recalculate_energies: bool
+        Recalculate track and shower energies, etc
     make_data_list: bool
         Make list of Pytorch Data objects after loading and processing data
     """
@@ -49,7 +49,7 @@ class Dataset(TorchSet):
                  # feature_labels=None,
                  truth_labels=['x', 'y', 'z', 'x_dir', 'y_dir', 'z_dir', 'log10(energy)', 'log10(shower_energy)', 'log10(track_energy)', 'PID'],
                  save_energies=False,
-                 force_recalculate=False,
+                 recalculate_energies=False,
                  overwrite_data=True,
                  normalization_parameters=None,
                  make_data_list=True):
@@ -57,8 +57,8 @@ class Dataset(TorchSet):
         self.files = indir_list
         self.upgrade = upgrade
         logging.info('Loading inputs')
-        self._truths, self._file_lengths = self._load_inputs(save_energies, force_recalculate)
         self._pulse_frame = "SRTTWOfflinePulsesDC" if not self.upgrade else "SplitInIcePulsesSRT"
+        self._truths, self._file_lengths = self._load_inputs(save_energies, recalculate_energies)
         self._pulse_index, self._event_index = self._get_input_information(self._pulse_frame)
         self._range_dict = RangeDict()
         for i, (start, stop) in enumerate(self._event_index):
