@@ -263,8 +263,7 @@ class Dataset(TorchSet):
 
     def get(self, idx):
         event = self.get_as_numpy(idx)
-        indir_idx, i = self.get_decoded_index(idx)
-        truth = self._truths[self.truth_labels][i]
+        truth = self._truths[self.truth_labels][idx]
         d = Data(x=torch.tensor(event, dtype=torch.float),
                  y=torch.tensor(truth, dtype=torch.float),
                  )
