@@ -1,12 +1,19 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import List, Literal, Tuple
+from pandas import DataFrame
+from pytorch_lightning import Trainer
 
 import torch
+from torch.utils.data import DataLoader
 
 from graphnet.data.utils import get_desired_event_numbers, get_even_track_cascade_indicies
+from graphnet.models.detector.detector import Detector
+from graphnet.models.gnn.gnn import GNN
 from graphnet.models.training.utils import get_predictions as _get_predictions, make_train_validation_dataloader, make_dataloader
 from graphnet.components.loss_functions import BinaryCrossEntropyLoss, LogCoshLoss, VonMisesFisher2DLoss
+from graphnet.models.task.task import Task
+from graphnet.models.model import Model
 from graphnet.models.task.reconstruction import PassOutput1, BinaryClassificationTask, EnergyReconstruction, ZenithReconstruction, ZenithReconstructionWithKappa
 
 from sklearn.model_selection import train_test_split
@@ -17,46 +24,60 @@ Target = Literal["track", "energy", "zenith"]
 
 @dataclass
 class Archive:
-    path: Path
+    '''Utility to create all paths used.'''
+    root: Path
 
     @property
     def root_str(self):
-        return str(self.path.absolute())
+        return str(self.root.absolute())
 
     @property
     def state_dict_str(self):
-        return str(self.path.joinpath('state_dict.pth').absolute())
+        return str(self.root.joinpath('state_dict.pth').absolute())
 
     @property
     def model_str(self):
-        return str(self.path.joinpath('model.pth').absolute())
+        return str(self.root.joinpath('model.pth').absolute())
 
     @property
     def results_str(self):
-        return str(self.path.joinpath('results.csv').absolute())
+        return str(self.root.joinpath('results.csv').absolute())
 
     @property
-    def roc_auc_str(self):
-        return str(self.path.joinpath('roc_auc.png').absolute())
+    def roc_auc_plot_str(self):
+        return str(self.root.joinpath('roc_auc.png').absolute())
 
     @property
-    def resolution_str(self):
-        return str(self.path.joinpath('resolution.png').absolute())
+    def roc_csv_str(self):
+        return str(self.root.joinpath('roc.csv').absolute())
+
+    @property
+    def auc_file_str(self):
+        return str(self.root.joinpath('auc.npy').absolute())
+
+    @property
+    def resolution_plot_str(self):
+        return str(self.root.joinpath('resolution.png').absolute())
+
+    @property
+    def resolution_csv_str(self):
+        return str(self.root.joinpath('resolution.csv').absolute())
 
 
 @dataclass
 class Args:
+    '''Carries all arguments used in individual runs.'''
     run_name: str  # nnb-8, nnb-4, ...
     target: Target  # track, energy, zenith
 
     database: Path
     pulsemap: str
-    features: list[str]
-    truth: list[str]
+    features: List[str]
+    truth: List[str]
 
     batch_size: int
     num_workers: int
-    gpus: list[int]
+    gpus: List[int]
 
     max_epochs: int
     patience: int
@@ -67,16 +88,36 @@ class Args:
     def database_str(self):
         return str(self.database.absolute())
 
+    def __repr__(self):
+        return (f'{self.__class__.__name__}'
+                f'(run_name={self.run_name!r}, target={self.target!r})')
+
 
 @dataclass
-class Values:
-    detector: ...
-    gnn: ...
-    task: ...
-    model: ...
+class Vals:
+    '''Carries all model and data related info created from args'''
+    detector: Detector
+    gnn: GNN
+    task: Task
+    model: Model
+
+    training_dataloader: DataLoader
+    validation_dataloader: DataLoader
+    test_dataloader: DataLoader
 
 
-def get_predictions(*, target: Target, trainer, model, test_dataloader):
+def get_predictions(*, target: Target, model: Model, trainer: Trainer, test_dataloader: DataLoader) -> DataFrame:
+    '''Get predictions for given target from model using trainer from test_dataloader data.
+
+    Args:
+        target (Target): The target.
+        model (_type_): The model.
+        trainer (Trainer): The trainer.
+        test_dataloader (DataLoader): The dataloader.
+
+    Returns:
+        DataFrame: Contains prediction, truth, energy, event_no and kappa in case of zenith.
+    '''
     if target == 'track':
         return _get_predictions(
             trainer,
@@ -104,11 +145,17 @@ def get_predictions(*, target: Target, trainer, model, test_dataloader):
             additional_attributes=[target, 'event_no', 'energy'],
         )
 
-    else:
-        raise Exception('target does not match')
 
+def get_task(target: Target, gnn: GNN) -> Task:
+    '''Returns a task for given target and matches gnn size.
 
-def get_task(*, target: Target, gnn):
+    Args:
+        target (Target): The target.
+        gnn (GNN): The gnn of which the size is used.
+
+    Returns:
+        Task: The Task.
+    '''
     if target == 'track':
         return BinaryClassificationTask(
             hidden_size=gnn.nb_outputs,
@@ -138,9 +185,6 @@ def get_task(*, target: Target, gnn):
             loss_function=VonMisesFisher2DLoss(),
         )
 
-    else:
-        raise Exception('target does not match')
-
 
 def get_selections(args: Args):
     if args.target == 'track':
@@ -160,7 +204,15 @@ def get_selections(args: Args):
     return train_valid_selection, test_selection
 
 
-def get_dataloaders(args: Args):
+def get_dataloaders(args: Args) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    '''Creates three Dataloaders from args.database and selections that match args.target.
+
+    Args:
+        args (Args): All arguments.
+
+    Returns:
+        Tuple[DataLoader, DataLoader, DataLoader]: Training, Validation, Test.
+    '''
     train_valid_selection, test_selection = get_selections(args)
 
     training_dataloader, validation_dataloader = make_train_validation_dataloader(  # type: ignore

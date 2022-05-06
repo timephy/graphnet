@@ -8,35 +8,29 @@ from graphnet.models.graph_builders import KNNGraphBuilder
 from graphnet.models.training.callbacks import ProgressBar, PiecewiseLinearLR
 
 
-get_dataloaders = common.get_dataloaders
+class Vals_NNB(common.Vals):
+    def __init__(self, args: common.Args, *, nb_nearest_neighbours: int = 8):
+        self.training_dataloader, self.validation_dataloader, self.test_dataloader = \
+            common.get_dataloaders(args)
 
+        self.detector = IceCubeDeepCore(
+            graph_builder=KNNGraphBuilder(nb_nearest_neighbours=nb_nearest_neighbours)
+        )
+        self.gnn = DynEdge(nb_inputs=self.detector.nb_outputs)
+        self.task = common.get_task(target=args.target, gnn=self.gnn)
 
-def get_parts(args: common.Args, training_dataloader, *, nb_nearest_neighbours=8) -> common.Values:
-    detector = IceCubeDeepCore(
-        graph_builder=KNNGraphBuilder(nb_nearest_neighbours=nb_nearest_neighbours)
-    )
-    gnn = DynEdge(nb_inputs=detector.nb_outputs)
-    task = common.get_task(target=args.target, gnn=gnn)
-
-    model = Model(
-        detector=detector,
-        gnn=gnn,
-        tasks=[task],
-        optimizer_class=Adam,
-        optimizer_kwargs={'lr': 1e-03, 'eps': 1e-03},
-        scheduler_class=PiecewiseLinearLR,
-        scheduler_kwargs={
-            'milestones': [0, len(training_dataloader) / 2, len(training_dataloader) * args.max_epochs],
-            'factors': [1e-2, 1, 1e-02],
-        },
-        scheduler_config={
-            'interval': 'step',
-        },
-    )
-
-    return common.Values(
-        detector=detector,
-        gnn=gnn,
-        task=task,
-        model=model,
-    )
+        self.model = Model(
+            detector=self.detector,
+            gnn=self.gnn,
+            tasks=[self.task],
+            optimizer_class=Adam,
+            optimizer_kwargs={'lr': 1e-03, 'eps': 1e-03},
+            scheduler_class=PiecewiseLinearLR,
+            scheduler_kwargs={
+                'milestones': [0, len(self.training_dataloader) / 2, len(self.training_dataloader) * args.max_epochs],
+                'factors': [1e-2, 1, 1e-02],
+            },
+            scheduler_config={
+                'interval': 'step',
+            },
+        )

@@ -15,19 +15,9 @@ from graphnet.models.graph_builders import KNNGraphBuilder
 import common
 
 
-def train_test(args: common.Args, get_dataloaders, get_parts):
+def train_test(args: common.Args, vals: common.Vals):
     print()
-    print(f'===== train({args.run_name=}, {args.target=}) =====')
-    print(f'{args.features=}')
-    print(f'{args.truth=}')
-
-    # Getting data
-    training_dataloader, validation_dataloader, test_dataloader = \
-        get_dataloaders(args)
-
-    # Building model
-    parts = get_parts(args, training_dataloader)
-    model = parts.model
+    print(f'train({args.run_name=}, {args.target=})')
 
     # Setup Training
     callbacks = [
@@ -43,22 +33,22 @@ def train_test(args: common.Args, get_dataloaders, get_parts):
         max_epochs=args.max_epochs,
         callbacks=callbacks,
         log_every_n_steps=1,
-        # logger=wandb_logger,
     )
 
     # Training
-    trainer.fit(model, training_dataloader, validation_dataloader)
+    trainer.fit(vals.model, vals.training_dataloader, vals.validation_dataloader)
 
     # Predicting
     results = common.get_predictions(
         target=args.target,
+        model=vals.model,
         trainer=trainer,
-        model=model,
-        test_dataloader=test_dataloader,
+        test_dataloader=vals.test_dataloader,
     )
 
     # Saving to file
     os.makedirs(args.archive.root_str, exist_ok=True)
-    model.save_state_dict(args.archive.state_dict_str)
-    model.save(args.archive.model_str)
+
+    vals.model.save_state_dict(args.archive.state_dict_str)
+    vals.model.save(args.archive.model_str)
     results.to_csv(args.archive.results_str)

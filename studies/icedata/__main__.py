@@ -1,29 +1,16 @@
-from itertools import groupby
 from pathlib import Path
-from pytorch_lightning.loggers import WandbLogger
-import torch
-from torch.optim.adam import Adam
-
-from graphnet.components.loss_functions import BinaryCrossEntropyLoss, LogCoshLoss, VonMisesFisher2DLoss
+from typing import List, Optional, Union
 from graphnet.data.constants import FEATURES, TRUTH
-from graphnet.data.pipeline import InSQLitePipeline
-from graphnet.models import Model
-from graphnet.models.detector.icecube import IceCubeDeepCore
-from graphnet.models.gnn import DynEdge
-from graphnet.models.graph_builders import KNNGraphBuilder
-from graphnet.models.task.reconstruction import PassOutput1, BinaryClassificationTask, EnergyReconstruction, ZenithReconstruction, ZenithReconstructionWithKappa
-from graphnet.models.training.callbacks import ProgressBar, PiecewiseLinearLR
 
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import torch
 
 import argparse
 
 import common
 import nnb
 from train_test import train_test
-from metrics import test_results
+from metrics import generate_metrics, plot_metrics, plot_metrics_combined
+from pipeline import run_pipeline
 
 
 # Configurations
@@ -40,69 +27,33 @@ except ValueError:
     pass
 
 
-def convert_model(args: common.Args):
+def convert_model(args: common.Args, vals: common.Vals):
     print()
     print(f'===== convert_model({args.target=}) =====')
 
     # Building model
-    _, get_parts = get_funcs(args)
-    model = get_parts(args, train_dataloader=[]).model
-
-    model.load_state_dict(args.archive.state_dict_str)
-    model.save(args.archive.model_str)
-
-
-def run_pipeline(args_list: list[common.Args], args_settings: common.Args):
-    print(f'===== run_pipeline() =====')
-
-    def get_output_column_names(target: common.Target):
-        if target in ['azimuth', 'zenith']:
-            return [target + '_pred', target + '_kappa']
-        elif target in ['track', 'neutrino', 'energy']:
-            return [target + '_pred']
-        else:
-            raise Exception('target not found')
-
-    def build_module_dictionary(args_list: list[common.Args]):
-        module_dict = {}
-        for args in args_list:
-            module_dict[args.target] = {}
-            module_dict[args.target]['path'] = args.archive.model_str
-            module_dict[args.target]['output_column_names'] = get_output_column_names(args.target)
-        return module_dict
-
-    # Build Pipeline
-    pipeline = InSQLitePipeline(
-        module_dict=build_module_dictionary(args_list),
-        features=args_settings.features,
-        truth=args_settings.truth,
-        device=f'cuda:{args_settings.gpus[0]}',
-        batch_size=args_settings.batch_size,
-        n_workers=args_settings.num_workers,
-        pipeline_name='pipeline',
-        outdir='pipeline_results'
-    )
-
-    # Run Pipeline
-    pipeline(args_settings.database_str, args_settings.pulsemap)
+    vals.model.load_state_dict(args.archive.state_dict_str)
+    vals.model.save(args.archive.model_str)
 
 
 def main():
     # Config
+    functions_all = ['convert_model', 'train_test', 'metrics', 'plot_metrics', 'pipeline', 'plot_metrics_combined']
     targets_all: list[common.Target] = ['track', 'energy', 'zenith']
     run_names_all = ['8nn', '4nn', '3nn', '2nn']
-
-    pipeline_name = 'pipeline_tim_0'
 
     # Parser
     parser = argparse.ArgumentParser(
         description='A script to train, test, generate metrics and run pipelines for variations of graphnet.')
 
     parser.add_argument('-f', dest='functions', nargs='+',
-                        default=['train_test', 'metrics', 'pipeline'],
+                        required=True,
                         help='what functions to run on targets')
     parser.add_argument('-t', dest='targets', nargs='+',
                         default=targets_all,
+                        help='what targets to run functions on')
+    parser.add_argument('-g', dest='gpus', nargs='+', type=int,
+                        default=[3],
                         help='what targets to run functions on')
     parser.add_argument('-n', dest='run_names', nargs='+',
                         required=True,
@@ -114,6 +65,9 @@ def main():
     targets = args.targets
     functions = args.functions
     run_names = args.run_names
+    gpus = args.gpus
+
+    archive_base = Path(f'/remote/ceph/user/t/timg/archive')
 
     # Run
     args_dict = {}
@@ -131,54 +85,125 @@ def main():
 
                 batch_size=512,
                 num_workers=30,
-                gpus=[3],
+                gpus=gpus,
 
                 max_epochs=50,
                 patience=5,
 
-                archive=common.Archive(Path(f'/remote/ceph/user/t/timg/archive/{run_name}/{target}'),)
+                archive=common.Archive(archive_base.joinpath(f'{run_name}/{target}'))
             )
 
-    for run_name in run_names:
-        for target in targets:
-            args = args_dict[run_name][args]
-            get_dataloaders, get_parts = get_funcs(args)
+    # Print overview
+    def print_status(
+        args_active: Union[common.Args, List[common.Args]] = [],
+        function_active: Union[str, List[str]] = []
+    ):
+        from colorama import Fore, Back, Style
 
-            for target in targets:
-                if 'convert_model' in functions:
-                    convert_model(args)
-                if 'train_test' in functions:
-                    train_test(args, get_dataloaders, get_parts)
-                if 'metrics' in functions:
-                    test_results(args)
+        if not isinstance(args_active, list):
+            args_active = [args_active]
+        if not isinstance(function_active, list):
+            function_active = [function_active]
+
+        def if_(function=None, run_name=None, target=None):
+            if function is not None and function not in functions:
+                return False
+            if run_name is not None and run_name not in run_names:
+                return False
+            if target is not None and target not in targets:
+                return False
+            return True
+
+        print()
+        print('The selection of targets that functions will be run on:')
+        for run_name in run_names_all:
+            for target in targets_all:
+                prefix = Fore.LIGHTRED_EX + '◉' if args_dict[run_name][target] in args_active else \
+                    Fore.GREEN + '◉' if if_(run_name=run_name, target=target) else \
+                    Fore.LIGHTBLACK_EX + '◯'
+                print(
+                    prefix,
+                    f'{run_name:8} {target:8} {args_dict[run_name][target]}' +
+                    Style.RESET_ALL
+                )
+
+        print()
+        print('The selection of functions that will be run:')
+        for function in functions_all:
+            prefix = Fore.LIGHTRED_EX + '◉' if function in function_active else \
+                Fore.GREEN + '◉' if if_(function=function) else \
+                Fore.LIGHTBLACK_EX + '◯'
+            print(
+                prefix,
+                f'{function}' +
+                Style.RESET_ALL
+            )
+
+    print_status()
+
+    # Execute
+    for run_name_id, run_name in enumerate(run_names):
+        for target_id, target in enumerate(targets):
+            if 'convert_model' in functions:
+                # for target_id, target in enumerate(targets):
+                args = args_dict[run_name][target]
+                vals = get_vals(args)
+
+                print_status(args_active=args, function_active='convert_model')
+                convert_model(args, vals)
+
+            if 'train_test' in functions:
+                # for target_id, target in enumerate(targets):
+                args = args_dict[run_name][target]
+                vals = get_vals(args)
+
+                print_status(args_active=args, function_active='train_test')
+                train_test(args, vals)
+
+            if 'metrics' in functions:
+                # for target_id, target in enumerate(targets):
+                args = args_dict[run_name][target]
+                # vals = get_vals(args)
+                print_status(args_active=args, function_active='metrics')
+                generate_metrics(args)
+
+            if 'plot_metrics' in functions:
+                # for target_id, target in enumerate(targets):
+                args = args_dict[run_name][target]
+                # vals = get_vals(args)
+                print_status(args_active=args, function_active='plot_metrics')
+                plot_metrics(args)
 
         if 'pipeline' in functions:
-            for args_list in args_dict[run_name]:
-                # Use first item as settings
-                args_settings = args_list[0]
-                run_pipeline(args_list, args_settings)
+            args_list = list(args_dict[run_name].values())
+            print_status(args_active=args_list, function_active='pipeline')
+            run_pipeline(args_list)
+
+    if 'plot_metrics_combined' in functions:
+        for target in targets_all:
+            args_list = [args_dict[run_name][target] for run_name in run_names]
+            print_status(args_active=args_list, function_active='plot_metrics_combined')
+            plot_metrics_combined(args_list, path_out=str(archive_base.joinpath(f'metrics_{target}.png').absolute()))
 
 
-def get_funcs(args: common.Args):
+def get_vals(args: common.Args) -> common.Vals:
     if args.run_name == '8nn':
-        get_dataloaders = nnb.get_dataloaders
-        get_parts = lambda *args, **kwargs: nnb.get_parts(*args, **kwargs, nb_nearest_neighbours=8)
+        return nnb.Vals_NNB(args, nb_nearest_neighbours=8)
+
     elif args.run_name == '5nn':
-        get_dataloaders = nnb.get_dataloaders
-        get_parts = lambda *args, **kwargs: nnb.get_parts(*args, **kwargs, nb_nearest_neighbours=5)
+        return nnb.Vals_NNB(args, nb_nearest_neighbours=5)
+
     elif args.run_name == '4nn':
-        get_dataloaders = nnb.get_dataloaders
-        get_parts = lambda *args, **kwargs: nnb.get_parts(*args, **kwargs, nb_nearest_neighbours=4)
+        return nnb.Vals_NNB(args, nb_nearest_neighbours=4)
+
     elif args.run_name == '3nn':
-        get_dataloaders = nnb.get_dataloaders
-        get_parts = lambda *args, **kwargs: nnb.get_parts(*args, **kwargs, nb_nearest_neighbours=3)
+        return nnb.Vals_NNB(args, nb_nearest_neighbours=3)
+
     elif args.run_name == '2nn':
-        get_dataloaders = nnb.get_dataloaders
-        get_parts = lambda *args, **kwargs: nnb.get_parts(*args, **kwargs, nb_nearest_neighbours=2)
+        return nnb.Vals_NNB(args, nb_nearest_neighbours=2)
+
     else:
         raise Exception('run_name not found')
-
-    return get_dataloaders, get_parts
 
 
 if __name__ == '__main__':
