@@ -8,6 +8,7 @@ import argparse
 
 import common
 import nnb
+import idon
 from train_test import train_test
 from metrics import generate_metrics, plot_metrics, plot_metrics_combined
 from pipeline import run_pipeline
@@ -40,7 +41,7 @@ def main():
     # Config
     functions_all = ['convert_model', 'train_test', 'metrics', 'plot_metrics', 'pipeline', 'plot_metrics_combined']
     targets_all: list[common.Target] = ['track', 'energy', 'zenith']
-    run_names_all = ['8nn', '4nn', '3nn', '2nn']
+    run_names_all = ['8nn', '4nn', '3nn', '2nn', 'idon-8', 'idon-6', 'idon-4']
 
     # Parser
     parser = argparse.ArgumentParser(
@@ -184,6 +185,8 @@ def main():
             args_list = [args_dict[run_name][target] for run_name in run_names]
             print_status(args_active=args_list, function_active='plot_metrics_combined')
             plot_metrics_combined(args_list, path_out=str(archive_base.joinpath(f'metrics_{target}.png').absolute()))
+            plot_metrics_combined(args_list, path_out=str(
+                archive_base.joinpath(f'metrics_{target}.png').absolute())[:-3] + 'svg')
 
 
 def get_vals(args: common.Args) -> common.Vals:
@@ -201,6 +204,15 @@ def get_vals(args: common.Args) -> common.Vals:
 
     elif args.run_name == '2nn':
         return nnb.Vals_NNB(args, nb_nearest_neighbours=2)
+
+    elif args.run_name == 'idon-8':
+        return idon.Vals_IDON(args, nb_nearest_neighbours=8)
+
+    elif args.run_name == 'idon-6':
+        return idon.Vals_IDON(args, nb_nearest_neighbours=6)
+
+    elif args.run_name == 'idon-4':
+        return idon.Vals_IDON(args, nb_nearest_neighbours=4)
 
     else:
         raise Exception('run_name not found')

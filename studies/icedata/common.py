@@ -6,6 +6,7 @@ from pytorch_lightning import Trainer
 
 import torch
 from torch.utils.data import DataLoader
+from graphnet.data.sqlite_dataset import SQLiteDataset
 
 from graphnet.data.utils import get_desired_event_numbers, get_even_track_cascade_indicies
 from graphnet.models.detector.detector import Detector
@@ -193,7 +194,7 @@ def get_selections(args: Args):
     elif args.target == 'energy' or args.target == 'zenith':
         selection = get_desired_event_numbers(
             args.database,
-            10000000000,
+            10000000000,  # 10000000000
             fraction_muon=0, fraction_nu_e=0.34, fraction_nu_mu=0.33, fraction_nu_tau=0.33  # type: ignore
         )
         train_valid_selection, test_selection = train_test_split(selection, test_size=0.25, random_state=42)
@@ -204,7 +205,7 @@ def get_selections(args: Args):
     return train_valid_selection, test_selection
 
 
-def get_dataloaders(args: Args) -> Tuple[DataLoader, DataLoader, DataLoader]:
+def get_dataloaders(args: Args, *, dataset_class=SQLiteDataset) -> Tuple[DataLoader, DataLoader, DataLoader]:
     '''Creates three Dataloaders from args.database and selections that match args.target.
 
     Args:
@@ -224,6 +225,7 @@ def get_dataloaders(args: Args) -> Tuple[DataLoader, DataLoader, DataLoader]:
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         test_size=0.33,
+        dataset_class=dataset_class,
     )
     test_dataloader = make_dataloader(
         db=args.database_str,
@@ -234,5 +236,6 @@ def get_dataloaders(args: Args) -> Tuple[DataLoader, DataLoader, DataLoader]:
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         shuffle=False,
+        dataset_class=dataset_class,
     )
     return training_dataloader, validation_dataloader, test_dataloader

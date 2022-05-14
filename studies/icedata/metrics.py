@@ -1,5 +1,3 @@
-import os
-from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
@@ -23,6 +21,7 @@ def resolution_data(target, results):
 
     x = []
     y = []
+    error = []
     ranges = np.arange(0, 3.1, 0.1)
     for i in range(0, len(ranges)-1):
         min = ranges[i]
@@ -32,13 +31,23 @@ def resolution_data(target, results):
 
         x.append(np.mean(data_sliced['energy_log10']))
         y.append(resolution_fn(data_sliced['R']))
+        error.append(error_fn(data_sliced['R']))
 
     # return x, y
-    return pd.DataFrame(list(zip(x, y)), columns=['energy', 'resolution'])
+    return pd.DataFrame(list(zip(x, y, error)), columns=['energy', 'resolution', 'resolution_error'])
 
 
 def resolution_fn(r):
     return (np.percentile(r, 84) - np.percentile(r, 16)) / 2.
+
+
+def error_fn(r):
+    rng = np.random.default_rng(42)
+    w = []
+    for _ in range(150):
+        new_sample = rng.choice(r, size=len(r), replace=True)
+        w.append(resolution_fn(new_sample))
+    return np.std(w)
 
 
 def plot_roc_auc(
@@ -59,7 +68,7 @@ def plot_roc_auc(
     plt.ylabel('True positive rate', fontsize=16)
     plt.legend(loc='lower right')
     plt.title(title, fontsize=16)
-    plt.savefig(path_out)
+    plt.savefig(path_out, dpi=300)
 
 
 def plot_resolution(
@@ -75,19 +84,25 @@ def plot_resolution(
 
     for df, label in zip(dfs, labels):
         plt.plot(df['energy'], df['resolution'], linestyle='solid', label=label)
+        plt.fill_between(
+            df["energy"],
+            df["resolution"] - df["resolution_error"],
+            df["resolution"] + df["resolution_error"],
+            alpha=0.1,
+        )
 
     plt.xlabel(xlabel, fontsize=16)
     plt.ylabel(ylabel, fontsize=16)
     plt.title(title, fontsize=16)
     plt.legend(loc='lower right')
-    plt.savefig(path_out)
+    plt.savefig(path_out, dpi=300)
 
 
 def plot_scatter(args: common.Args, y_pred, y_true, scale='linear'):
     max = np.max([y_pred.max(), y_true.max()])
 
     plt.figure(figsize=(8, 6))
-    plt.plot([0, max], [0, max])  # , 'k–'
+    plt.plot([0, max], [0, max])
 
     plt.scatter(y_pred, y_true, marker='.')  # type: ignore
 
@@ -111,6 +126,7 @@ def plot_metrics_combined(args_list: List[common.Args], *, path_out: str):
             dfs,
             aucs,
             labels,
+            title='Track Classification',
             path_out=path_out
         )
 
@@ -171,7 +187,6 @@ def generate_metrics(args: common.Args):
         df, auc = roc_auc(y_pred, y_true)
         df.to_csv(args.archive.roc_csv_str)
         np.save(args.archive.auc_file_str, auc)
-        # plot_roc_auc(args, df, auc)
 
         print(confusion_matrix(y_true, y_pred_tag))
         print(classification_report(y_true, y_pred_tag))
@@ -182,7 +197,6 @@ def generate_metrics(args: common.Args):
 
         df = resolution_data(args.target, results)
         df.to_csv(args.archive.resolution_csv_str)
-        # plot_resolution(args, df)
 
     elif args.target == 'zenith':
         results['R'] = results[args.target + '_pred'] - results[args.target]
@@ -190,4 +204,3 @@ def generate_metrics(args: common.Args):
 
         df = resolution_data(args.target, results)
         df.to_csv(args.archive.resolution_csv_str)
-        # plot_resolution(args, df)
