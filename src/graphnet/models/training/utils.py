@@ -29,13 +29,14 @@ def make_dataloader(
     node_truth: str = None,
     node_truth_table: str  = None,
     string_selection: List[int] = None,
+    dataset_class = SQLiteDataset,
 ) -> DataLoader:
 
     # Check(s)
     if isinstance(pulsemaps, str):
         pulsemaps = [pulsemaps]
 
-    dataset = SQLiteDataset(
+    dataset = dataset_class(
         db,
         pulsemaps,
         features,
@@ -79,6 +80,7 @@ def make_train_validation_dataloader(
     node_truth: str = None,
     node_truth_table: str  = None,
     string_selection: List[int] = None,
+    dataset_class = SQLiteDataset,
 ) -> Tuple[DataLoader]:
 
     # Reproducibility
@@ -110,6 +112,7 @@ def make_train_validation_dataloader(
         node_truth = node_truth,
         node_truth_table = node_truth_table,
         string_selection = string_selection,
+        dataset_class = dataset_class,
     )
 
     training_dataloader = make_dataloader(
