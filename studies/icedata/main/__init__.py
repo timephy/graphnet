@@ -8,7 +8,7 @@ from graphnet.models.graph_builders import KNNGraphBuilder
 from graphnet.models.training.callbacks import ProgressBar, PiecewiseLinearLR
 
 
-class Vals_NNB(common.Vals):
+class Vals_MAIN(common.Vals):
     def __init__(self, args: common.Args, *, nb_nearest_neighbours: int = 8):
         self.training_dataloader, self.validation_dataloader, self.test_dataloader = \
             common.get_dataloaders(args)

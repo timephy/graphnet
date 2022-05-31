@@ -1,17 +1,15 @@
-from pathlib import Path
-from typing import List, Optional, Union
-from graphnet.data.constants import FEATURES, TRUTH
-
-import torch
-
-import argparse
-
-import common
-import nnb
-import idon
-from train_test import train_test
-from metrics import generate_metrics, plot_metrics, plot_metrics_combined
 from pipeline import run_pipeline
+from metrics import generate_metrics, plot_metrics, plot_metrics_combined
+from train_test import train_test
+import idon_transformer_old
+import idon_tilt
+import main as _main
+import common
+import argparse
+import torch
+from graphnet.data.constants import FEATURES, TRUTH
+from typing import List, Optional, Union
+from pathlib import Path
 
 
 # Configurations
@@ -41,14 +39,27 @@ def main():
     # Config
     functions_all = ['convert_model', 'train_test', 'metrics', 'plot_metrics', 'pipeline', 'plot_metrics_combined']
     targets_all: list[common.Target] = ['track', 'energy', 'zenith']
-    run_names_all = ['8nn', '4nn', '3nn', '2nn', 'idon-8', 'idon-6', 'idon-4']
+    run_names_all = [
+        'main-10',
+        'main-8',
+        'main-4',
+        #
+        'idon-8',
+        'idon-6',
+        #
+        'idon_tilt-8',
+        # 'idon_tilt-6',
+        #
+        'idon-8_old',
+        'idon-6_old',
+    ]
 
     # Parser
     parser = argparse.ArgumentParser(
         description='A script to train, test, generate metrics and run pipelines for variations of graphnet.')
 
     parser.add_argument('-f', dest='functions', nargs='+',
-                        required=True,
+                        default=['train_test', 'metrics', 'plot_metrics'],
                         help='what functions to run on targets')
     parser.add_argument('-t', dest='targets', nargs='+',
                         default=targets_all,
@@ -190,33 +201,36 @@ def main():
 
 
 def get_vals(args: common.Args) -> common.Vals:
-    if args.run_name == '8nn':
-        return nnb.Vals_NNB(args, nb_nearest_neighbours=8)
+    # MAIN
+    if args.run_name == 'main-10':
+        return _main.Vals_MAIN(args, nb_nearest_neighbours=10)
 
-    elif args.run_name == '5nn':
-        return nnb.Vals_NNB(args, nb_nearest_neighbours=5)
+    if args.run_name == 'main-8':
+        return _main.Vals_MAIN(args, nb_nearest_neighbours=8)
 
-    elif args.run_name == '4nn':
-        return nnb.Vals_NNB(args, nb_nearest_neighbours=4)
+    elif args.run_name == 'main-4':
+        return _main.Vals_MAIN(args, nb_nearest_neighbours=4)
 
-    elif args.run_name == '3nn':
-        return nnb.Vals_NNB(args, nb_nearest_neighbours=3)
+    elif args.run_name == 'main-3':
+        return _main.Vals_MAIN(args, nb_nearest_neighbours=3)
 
-    elif args.run_name == '2nn':
-        return nnb.Vals_NNB(args, nb_nearest_neighbours=2)
+    # OLD
+    elif args.run_name == 'idon_transformer_old-8':
+        return idon_transformer_old.Vals_IDON(args, nb_nearest_neighbours=8)
 
-    elif args.run_name == 'idon-8':
-        return idon.Vals_IDON(args, nb_nearest_neighbours=8)
+    # IDON_Tilt
+    elif args.run_name == 'idon_tilt-8':
+        return idon_tilt.Vals_IDON_Tilt(args, nb_nearest_neighbours=8)
+    elif args.run_name == 'idon_tilt_transformer-8':
+        return idon_tilt.Vals_IDON_Tilt_Transformer(args, nb_nearest_neighbours=8)
 
-    elif args.run_name == 'idon-6':
-        return idon.Vals_IDON(args, nb_nearest_neighbours=6)
+    # IDOE
 
-    elif args.run_name == 'idon-4':
-        return idon.Vals_IDON(args, nb_nearest_neighbours=4)
-
+    # else
     else:
         raise Exception('run_name not found')
 
 
 if __name__ == '__main__':
+    print('main()')
     main()

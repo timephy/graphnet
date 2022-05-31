@@ -44,6 +44,10 @@ class Detector(LightningModule):
         # Graph-bulding
         # @NOTE: `.clone` is necessary to avoid modifying original tensor in-place.
         data = self._graph_builder(data).clone()
+        # print(data.edge_index)
+        # print(data.edge_attr)
+        # print(data.x)
+        # exit()
 
         if self._scalers:
             # # Scaling individual features
