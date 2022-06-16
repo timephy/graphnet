@@ -2,8 +2,10 @@ import os
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.loggers import WandbLogger
 
 from torch.optim.adam import Adam
+import wandb
 
 from graphnet.models.training.callbacks import ProgressBar, PiecewiseLinearLR
 from graphnet.models import Model
@@ -19,6 +21,9 @@ def train_test(args: common.Args, vals: common.Vals):
     print()
     print(f'train({args.run_name=}, {args.target=})')
 
+    # Make output dir
+    os.makedirs(args.archive.root_str, exist_ok=True)
+
     # Setup Training
     callbacks = [
         EarlyStopping(
@@ -28,11 +33,26 @@ def train_test(args: common.Args, vals: common.Vals):
         ProgressBar(),
     ]
 
+    wandb_logger = WandbLogger(
+        project="graphnet",
+        entity="timephy",
+        save_dir="./wandb/",
+        log_model=False,
+        name=f'{args.run_name}:{args.target}',
+    )
+    wandb_logger.experiment.config.update(args.__dict__)
+    wandb_logger.experiment.config.update({
+        'features': vals.detector.features,
+        'optimizer_kwargs': vals.model._optimizer_kwargs,
+        'scheduler_kwargs': vals.model._scheduler_kwargs,
+    }, allow_val_change=True)
+
     trainer = Trainer(
         gpus=args.gpus,
         max_epochs=args.max_epochs,
         callbacks=callbacks,
         log_every_n_steps=1,
+        logger=wandb_logger,
     )
 
     # Training
@@ -46,9 +66,8 @@ def train_test(args: common.Args, vals: common.Vals):
         test_dataloader=vals.test_dataloader,
     )
 
-    # Saving to file
-    os.makedirs(args.archive.root_str, exist_ok=True)
-
     vals.model.save_state_dict(args.archive.state_dict_str)
     vals.model.save(args.archive.model_str)
     results.to_csv(args.archive.results_str)
+
+    wandb.finish()  # 'reset' to 'split' multiple runs

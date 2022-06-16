@@ -2,6 +2,7 @@ from pipeline import run_pipeline
 from metrics import generate_metrics, plot_metrics, plot_metrics_combined
 from train_test import train_test
 import idon_transformer_old
+import rde
 import idon_tilt
 import main as _main
 import common
@@ -48,10 +49,14 @@ def main():
         'idon-6',
         #
         'idon_tilt-8',
-        # 'idon_tilt-6',
+        'idon_tilt_transformed-8',
         #
-        'idon-8_old',
-        'idon-6_old',
+        'idon_tilt_old-8',
+        'idon_transformer_old-8',
+        'idon_old-8',
+        #
+        'rde-8',
+        'rde_transformed-8',
     ]
 
     # Parser
@@ -70,6 +75,12 @@ def main():
     parser.add_argument('-n', dest='run_names', nargs='+',
                         required=True,
                         help='what targets to run functions on')
+    parser.add_argument('-e', dest='epochs', type=int,
+                        default=50,
+                        help='what max_epochs to train with')
+    parser.add_argument('-p', dest='patience', type=int,
+                        default=5,
+                        help='what patience to use for early stopping during training')
 
     args = parser.parse_args()
     print(f'{args=}')
@@ -78,14 +89,38 @@ def main():
     functions = args.functions
     run_names = args.run_names
     gpus = args.gpus
+    epochs = args.epochs
+    patience = args.patience
 
     archive_base = Path(f'/remote/ceph/user/t/timg/archive')
 
     # Run
+    # args_dict = {}
+    # for run_name in run_names_all:
+    #     args_dict[run_name] = {}
+    #     for target in targets_all:
+    #         args_dict[run_name][target] = common.Args(
+    #             run_name=run_name,
+    #             target=target,
+
+    #             database=Path('/remote/ceph/user/t/timg/dev_lvl7_robustness_muon_neutrino_0000.db'),
+    #             pulsemap='SRTTWOfflinePulsesDC',
+    #             features=_features,
+    #             truth=_truth,
+
+    #             batch_size=512,
+    #             num_workers=30,
+    #             gpus=gpus,
+
+    #             max_epochs=50,
+    #             patience=5,
+
+    #             archive=common.Archive(archive_base.joinpath(f'{run_name}/{target}'))
+    #         )
     args_dict = {}
-    for run_name in run_names_all:
+    for run_name in run_names:
         args_dict[run_name] = {}
-        for target in targets_all:
+        for target in targets:
             args_dict[run_name][target] = common.Args(
                 run_name=run_name,
                 target=target,
@@ -99,8 +134,8 @@ def main():
                 num_workers=30,
                 gpus=gpus,
 
-                max_epochs=50,
-                patience=5,
+                max_epochs=epochs,
+                patience=patience,
 
                 archive=common.Archive(archive_base.joinpath(f'{run_name}/{target}'))
             )
@@ -128,8 +163,8 @@ def main():
 
         print()
         print('The selection of targets that functions will be run on:')
-        for run_name in run_names_all:
-            for target in targets_all:
+        for run_name in run_names:
+            for target in targets:
                 prefix = Fore.LIGHTRED_EX + '◉' if args_dict[run_name][target] in args_active else \
                     Fore.GREEN + '◉' if if_(run_name=run_name, target=target) else \
                     Fore.LIGHTBLACK_EX + '◯'
@@ -154,35 +189,27 @@ def main():
     print_status()
 
     # Execute
-    for run_name_id, run_name in enumerate(run_names):
-        for target_id, target in enumerate(targets):
+    for run_name in run_names:
+        for target in targets:
             if 'convert_model' in functions:
-                # for target_id, target in enumerate(targets):
                 args = args_dict[run_name][target]
                 vals = get_vals(args)
-
                 print_status(args_active=args, function_active='convert_model')
                 convert_model(args, vals)
 
             if 'train_test' in functions:
-                # for target_id, target in enumerate(targets):
                 args = args_dict[run_name][target]
                 vals = get_vals(args)
-
                 print_status(args_active=args, function_active='train_test')
                 train_test(args, vals)
 
             if 'metrics' in functions:
-                # for target_id, target in enumerate(targets):
                 args = args_dict[run_name][target]
-                # vals = get_vals(args)
                 print_status(args_active=args, function_active='metrics')
                 generate_metrics(args)
 
             if 'plot_metrics' in functions:
-                # for target_id, target in enumerate(targets):
                 args = args_dict[run_name][target]
-                # vals = get_vals(args)
                 print_status(args_active=args, function_active='plot_metrics')
                 plot_metrics(args)
 
@@ -192,39 +219,42 @@ def main():
             run_pipeline(args_list)
 
     if 'plot_metrics_combined' in functions:
-        for target in targets_all:
+        for target in targets:
             args_list = [args_dict[run_name][target] for run_name in run_names]
             print_status(args_active=args_list, function_active='plot_metrics_combined')
             plot_metrics_combined(args_list, path_out=str(archive_base.joinpath(f'metrics_{target}.png').absolute()))
-            plot_metrics_combined(args_list, path_out=str(
-                archive_base.joinpath(f'metrics_{target}.png').absolute())[:-3] + 'svg')
+            plot_metrics_combined(args_list, path_out=str(archive_base.joinpath(f'metrics_{target}.svg').absolute()))
 
 
 def get_vals(args: common.Args) -> common.Vals:
     # MAIN
-    if args.run_name == 'main-10':
+    if args.run_name.startswith('main-10'):
         return _main.Vals_MAIN(args, nb_nearest_neighbours=10)
 
-    if args.run_name == 'main-8':
+    if args.run_name.startswith('main-8'):
         return _main.Vals_MAIN(args, nb_nearest_neighbours=8)
 
-    elif args.run_name == 'main-4':
+    elif args.run_name.startswith('main-4'):
         return _main.Vals_MAIN(args, nb_nearest_neighbours=4)
 
-    elif args.run_name == 'main-3':
+    elif args.run_name.startswith('main-3'):
         return _main.Vals_MAIN(args, nb_nearest_neighbours=3)
 
     # OLD
-    elif args.run_name == 'idon_transformer_old-8':
+    elif args.run_name.startswith('idon_transformer_old-8'):
         return idon_transformer_old.Vals_IDON(args, nb_nearest_neighbours=8)
 
     # IDON_Tilt
-    elif args.run_name == 'idon_tilt-8':
+    elif args.run_name.startswith('idon_tilt-8'):
         return idon_tilt.Vals_IDON_Tilt(args, nb_nearest_neighbours=8)
-    elif args.run_name == 'idon_tilt_transformer-8':
-        return idon_tilt.Vals_IDON_Tilt_Transformer(args, nb_nearest_neighbours=8)
+    elif args.run_name.startswith('idon_tilt_transformed-8'):
+        return idon_tilt.Vals_IDON_Tilt_Transformed(args, nb_nearest_neighbours=8)
 
-    # IDOE
+    # RDE
+    elif args.run_name.startswith('rde-8'):
+        return rde.Vals_RDE(args, nb_nearest_neighbours=8)
+    elif args.run_name.startswith('rde_transformed-8'):
+        return rde.Vals_RDE_Transformed(args, nb_nearest_neighbours=8)
 
     # else
     else:

@@ -94,7 +94,7 @@ def plot_resolution(
     plt.xlabel(xlabel, fontsize=16)
     plt.ylabel(ylabel, fontsize=16)
     plt.title(title, fontsize=16)
-    plt.legend(loc='lower right')
+    plt.legend(loc='upper right')
     plt.savefig(path_out, dpi=300)
 
 

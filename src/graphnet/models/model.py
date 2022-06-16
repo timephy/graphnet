@@ -84,12 +84,14 @@ class Model(LightningModule):
 
     def training_step(self, train_batch, batch_idx):
         loss = self.shared_step(train_batch, batch_idx)
-        self.log('train_loss', loss, batch_size=self._get_batch_size(train_batch), prog_bar=True, on_epoch=True, on_step=False)
+        self.log('train_loss', loss, batch_size=self._get_batch_size(
+            train_batch), prog_bar=True, on_epoch=True, on_step=False)
         return loss
 
     def validation_step(self, val_batch, batch_idx):
         loss = self.shared_step(val_batch, batch_idx)
-        self.log('val_loss', loss, batch_size=self._get_batch_size(val_batch), prog_bar=True, on_epoch=True, on_step=False)
+        self.log('val_loss', loss, batch_size=self._get_batch_size(
+            val_batch), prog_bar=True, on_epoch=True, on_step=False)
         return loss
 
     def compute_loss(self, preds: Tensor, data: Data, verbose=False) -> Tensor:
