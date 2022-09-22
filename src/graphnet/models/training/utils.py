@@ -27,11 +27,12 @@ def make_dataloader(
     num_workers: int = 10,
     persistent_workers: bool = True,
     node_truth: str = None,
-    node_truth_table: str  = None,
+    node_truth_table: str = None,
     string_selection: List[int] = None,
-    dataset_class = SQLiteDataset,
+    dataset_class=None,
 ) -> DataLoader:
-
+    if dataset_class is None:
+        dataset_class = SQLiteDataset
     # Check(s)
     if isinstance(pulsemaps, str):
         pulsemaps = [pulsemaps]
@@ -42,8 +43,8 @@ def make_dataloader(
         features,
         truth,
         selection=selection,
-        node_truth = node_truth,
-        node_truth_table = node_truth_table,
+        node_truth=node_truth,
+        node_truth_table=node_truth_table,
         string_selection=string_selection,
     )
 
@@ -64,6 +65,7 @@ def make_dataloader(
 
     return dataloader
 
+
 def make_train_validation_dataloader(
     db: str,
     selection: List[int],
@@ -78,9 +80,9 @@ def make_train_validation_dataloader(
     num_workers: int = 10,
     persistent_workers: bool = True,
     node_truth: str = None,
-    node_truth_table: str  = None,
+    node_truth_table: str = None,
     string_selection: List[int] = None,
-    dataset_class = SQLiteDataset,
+    dataset_class=SQLiteDataset,
 ) -> Tuple[DataLoader]:
 
     # Reproducibility
@@ -109,10 +111,10 @@ def make_train_validation_dataloader(
         batch_size=batch_size,
         num_workers=num_workers,
         persistent_workers=persistent_workers,
-        node_truth = node_truth,
-        node_truth_table = node_truth_table,
-        string_selection = string_selection,
-        dataset_class = dataset_class,
+        node_truth=node_truth,
+        node_truth_table=node_truth_table,
+        string_selection=string_selection,
+        dataset_class=dataset_class,
     )
 
     training_dataloader = make_dataloader(
@@ -127,9 +129,11 @@ def make_train_validation_dataloader(
         **common_kwargs,
     )
 
-    return training_dataloader, validation_dataloader  # , {'valid_selection':validation_selection, 'training_selection':training_selection}
+    # , {'valid_selection':validation_selection, 'training_selection':training_selection}
+    return training_dataloader, validation_dataloader
 
-def get_predictions(trainer, model, dataloader, prediction_columns, node_level = False, additional_attributes=None):
+
+def get_predictions(trainer, model, dataloader, prediction_columns, node_level=False, additional_attributes=None):
     # Check(s)
     if additional_attributes is None:
         additional_attributes = []
@@ -148,7 +152,6 @@ def get_predictions(trainer, model, dataloader, prediction_columns, node_level =
         predictions = predictions.reshape((-1, 1))
         assert len(prediction_columns) == predictions.shape[1]
 
-
     # Get additional attributes
     attributes = OrderedDict([(attr, []) for attr in additional_attributes])
     for batch in dataloader:
@@ -159,7 +162,6 @@ def get_predictions(trainer, model, dataloader, prediction_columns, node_level =
                     attribute = np.repeat(attribute, batch['n_pulses'].detach().cpu().numpy())
             attributes[attr].extend(attribute)
 
-
     data = np.concatenate([predictions] + [
         np.asarray(values)[:, np.newaxis] for values in attributes.values()
     ], axis=1)
@@ -167,11 +169,12 @@ def get_predictions(trainer, model, dataloader, prediction_columns, node_level =
     results = pd.DataFrame(data, columns=prediction_columns + additional_attributes)
     return results
 
-def save_results(db, tag, results, archive,model):
+
+def save_results(db, tag, results, archive, model):
     db_name = db.split('/')[-1].split('.')[0]
     path = archive + '/' + db_name + '/' + tag
-    os.makedirs(path, exist_ok = True)
+    os.makedirs(path, exist_ok=True)
     results.to_csv(path + '/results.csv')
     model.save_state_dict(path + '/' + tag + '_state_dict.pth')
     model.save(path + '/' + tag + '_model.pth')
-    print('Results saved at: \n %s'%path)
+    print('Results saved at: \n %s' % path)

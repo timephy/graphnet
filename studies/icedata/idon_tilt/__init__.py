@@ -13,6 +13,7 @@ from .dataset import SQLiteDataset_IDON_Tilt, SQLiteDataset_IDON_Tilt_Transforme
 
 class Vals_IDON_Tilt(common.Vals):
     def __init__(self, args: common.Args, *, nb_nearest_neighbours: int = 8):
+        print('Vals_IDON_Tilt')
         self.training_dataloader, self.validation_dataloader, self.test_dataloader = \
             common.get_dataloaders(args, dataset_class=SQLiteDataset_IDON_Tilt)
 
@@ -45,6 +46,7 @@ class Vals_IDON_Tilt(common.Vals):
 
 class Vals_IDON_Tilt_Transformed(common.Vals):
     def __init__(self, args: common.Args, *, nb_nearest_neighbours: int = 8):
+        print('Vals_IDON_Tilt_Transformed')
         self.training_dataloader, self.validation_dataloader, self.test_dataloader = \
             common.get_dataloaders(args, dataset_class=SQLiteDataset_IDON_Tilt_Transformed)
 

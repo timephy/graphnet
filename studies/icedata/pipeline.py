@@ -4,6 +4,7 @@ from typing import List
 import common
 
 from graphnet.data.pipeline import InSQLitePipeline
+from idon_tilt.dataset import SQLiteDataset_IDON_Tilt
 
 
 def run_pipeline(args_list: List[common.Args]):
@@ -32,7 +33,8 @@ def run_pipeline(args_list: List[common.Args]):
         batch_size=args_list[0].batch_size,
         n_workers=args_list[0].num_workers,
         pipeline_name='pipeline',
-        outdir=str(args_list[0].archive.root.joinpath('../pipeline'))
+        outdir=str(args_list[0].archive.root.joinpath('../pipeline')),
+        dataset_class=SQLiteDataset_IDON_Tilt,  # NOT THIS IN CASE OF SWITCHING!!!
     )
 
     # Run Pipeline

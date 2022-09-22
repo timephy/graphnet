@@ -45,6 +45,7 @@ def train_test(args: common.Args, vals: common.Vals):
         'features': vals.detector.features,
         'optimizer_kwargs': vals.model._optimizer_kwargs,
         'scheduler_kwargs': vals.model._scheduler_kwargs,
+        'vals_class': vals.__class__.__name__,
     }, allow_val_change=True)
 
     trainer = Trainer(

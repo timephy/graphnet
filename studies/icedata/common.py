@@ -19,6 +19,9 @@ from graphnet.models.task.reconstruction import PassOutput1, BinaryClassificatio
 
 from sklearn.model_selection import train_test_split
 
+from torch.nn.modules.loss import L1Loss, MSELoss
+
+from weighted_loss import LogCoshLoss_Weighted
 
 Target = Literal["track", "energy", "zenith"]
 
@@ -165,16 +168,26 @@ def get_task(target: Target, gnn: GNN) -> Task:
         )
 
     elif target == 'energy':
-        # task = EnergyReconstruction(
+        # started testing this on 10.07.22
+        # return PassOutput1(
+        #     hidden_size=gnn.nb_outputs,
+        #     target_labels=target,
+        #     loss_function=MSELoss(),
+        #     transform_target=torch.log10,
+        #     transform_inference=lambda x: torch.pow(10, x)
+        # )
+        # used the following for most of the training
+        # return PassOutput1(
         #     hidden_size=gnn.nb_outputs,
         #     target_labels=target,
         #     loss_function=LogCoshLoss(),
-        #     transform_prediction_and_target=torch.log10,
+        #     transform_target=torch.log10,
+        #     transform_inference=lambda x: torch.pow(10, x)
         # )
         return PassOutput1(
             hidden_size=gnn.nb_outputs,
             target_labels=target,
-            loss_function=LogCoshLoss(),
+            loss_function=LogCoshLoss_Weighted(),
             transform_target=torch.log10,
             transform_inference=lambda x: torch.pow(10, x)
         )
